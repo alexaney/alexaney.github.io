@@ -21,6 +21,14 @@ body {
     background: var(--paper);
 }
 
+body.wide {
+    max-width: 920px;
+}
+
+body.wide p {
+    text-align: center;
+}
+
 h1 {
     font-family: "Fraunces", Georgia, serif;
     font-size: 2.1rem;
@@ -125,6 +133,80 @@ hr {
 .gallery img:hover {
     transform: translateY(-3px);
     box-shadow: 0 8px 20px rgba(38, 36, 33, 0.12);
+}
+
+code {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.1em 0.4em;
+    font-size: 0.9em;
+}
+
+.grid-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 20px 16px;
+    margin: 1.8rem 0;
+}
+
+.grid-gallery figure {
+    margin: 0;
+}
+
+.grid-gallery img {
+    width: 100%;
+    height: 160px;
+    object-fit: cover;
+    display: block;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 14px rgba(38, 36, 33, 0.08);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.grid-gallery img:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(38, 36, 33, 0.12);
+}
+
+.grid-gallery figcaption {
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-top: 0.6rem;
+    line-height: 1.5;
+    text-align: center;
+}
+
+.pair {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 24px;
+    margin: 1.8rem 0;
+}
+
+.pair figure {
+    margin: 0;
+    width: 320px;
+    max-width: 100%;
+}
+
+.pair img {
+    width: 100%;
+    display: block;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 14px rgba(38, 36, 33, 0.08);
+}
+
+.pair figcaption {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--ink);
+    margin-top: 0.7rem;
+    text-align: center;
 }
 
 footer {

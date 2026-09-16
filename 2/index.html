@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Project 1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../style.css">
+</head>
+<body class="wide">
+    <!--
+      HOW TO FILL THIS PAGE IN:
+      1. Drop your output images into ../images/proj1/ using the filenames already
+         referenced below (e.g. cathedral.jpg, monastery.jpg, church.jpg, ...).
+      2. Replace every "[ ... ]" placeholder with your real offsets / write-up text.
+      3. Delete any <figure> blocks you don't end up using (e.g. if a self-chosen
+         image doesn't pan out) and duplicate a <figure> block if you add more.
+    -->
+
+    <h1>Project 1: Colorizing the Prokudin-Gorskii Photo Collection</h1>
+    <p class="tagline">Automatically aligning digitized glass-plate negatives into full-color images</p>
+
+    <span class="eyebrow">Overview</span>
+    <h2>The Problem</h2>
+    <p>Back in 1907, color photography did not exist yet. However, the photographer
+        Sergei Prokudin-Gorskii had a clever idea.<br><br>
+        He knew that all the colors that humans could see were built from red, green, and blue.
+        Instead of capturing color directly, he envisioned that if he could take 3 black and white photos
+        of the same scene and apply a red filter to the first one, a green filter to the second one, 
+        and a blue filter to the third one, he could recreate the color image by stacking them on top 
+        of each other. Each black and white photo captures exactly how much of each color of that filter
+        is present at each point in the image. 
+    </p>
+
+    <hr>
+
+    <span class="eyebrow">Part 1</span>
+    <h2>Single-Scale Alignment</h2>
+    <p>Stacking the photos on top of each other is not a trivial thing to do.
+        Because the technology that could take 3 photos in quick succession didn't
+        exist back then, there are slight alignment errors between each of the photos taken.
+        For me to be able to restore the color image as accurately as possible, I must
+        align the images the best I can. <br><br>
+        The function that I can use to help me here is np.roll(). It slides all the
+        pixels along the x and y axes by some specified amount, and wraps around any pixels
+        that fall off. <br><br>
+        Now that I am able to shift the images, the next step is to test how well the shifts (red and green filters)
+        align with the reference frame (the blue filter in this instance). There are two ways I can do this. <br>
+        The first way is through the L2 norm (Euclidean distance). If I take the square root of the squared difference
+        between pixel brightness values, I get a number that tells me roughly how similar the two
+        images are, with a number closer to 0 being more similar. <br>
+        The other method is through Normalized Cross Correlation (NCC). First I subtract the mean and normalize each of
+        the image vectors, and then I take the dot product of both vectors. Because they have both been demeaned
+        and normalized, if they are identical their dot product will be one. Therefore, the higher/closer the dot product is
+        to 1, the more similar the two images are.
+
+        <br><br>While both are good options, I chose to use NCC for my project because the L2 norm is very sensitive
+        when there are brightness differences between the different RGB channels, whereas NCC is more robust for those instances.
+        <br><br>When testing for which shift was best, I used a +-15 pixel window. This is because the number of shifts you have to
+        check grows exponentially, so 15 is a happy medium where you are still checking a wide range of shifts, but it is still not that
+        computationally expensive.
+    </p>
+    <div class="grid-gallery">
+        <figure>
+            <img src="../images/proj_1/cathedral.png" alt="Aligned cathedral.jpg result">
+            <figcaption>Cathedral<br>G: dx=[5], dy=[2] &middot; R: dx=[12], dy=[3]</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_1/monastery.png" alt="Aligned monastery.jpg result">
+            <figcaption>Monastery<br>G: dx=[-3], dy=[2] &middot; R: dx=[3], dy=[2]</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_1/tobolsk.png" alt="Aligned tobolsk.jpg result">
+            <figcaption>Tobolsk<br>G: dx=[3], dy=[3] &middot; R: dx=[6], dy=[3]</figcaption>
+        </figure>
+    </div>
+
+    <hr>
+
+    <span class="eyebrow">Part 2</span>
+    <h2>Multi-Scale Pyramid Alignment</h2>
+    <p>While the single scale alignment method works for smaller .jpg files, I find
+        that it becomes too computationally expensive for bigger .tif files. This is because
+        the .tif files can have millions of pixels, so the sliding window of 15 pixels isn't enough.
+        There are too many different shifts to check efficiently and even the ordinary pixel
+        arithmetic adds up once you're in the millions. <br><br>
+
+        The fix to this is through image pyramids. By making the image smaller (e.g. removing every other row and column),
+        you keep the image centered but reduce the number of pixels you have to deal with
+        significantly. Image pyramids are a form of recursion where the base case is a certain pixel count that
+        is manageable to perform single scale alignment on. To reach the base case, at each level the pixel
+        count is reduced by a factor of two, and once the shift from the previous level is passed up, a smaller sliding
+        window (4 pixels) is applied to better align the images. Once you reach the full resolution image again,
+        the alignment has been refined at every level, and the small window at the end catches any last errors.
+    </p>
+    <div class="grid-gallery">
+        <figure>
+            <img src="../images/proj_1/church.png" alt="Aligned church.tif result">
+            <figcaption>Church<br>G: dx=[25], dy=[4] &middot; R: dx=[58], dy=[-4]</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_1/emir-mid.png" alt="Aligned emir.tif result">
+            <figcaption>Emir<br>G: dx=[49], dy=[24] &middot; R: dx=[141], dy=[-205]</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_1/harvesters.png" alt="Aligned harvesters.tif result">
+            <figcaption>Harvesters<br>G: dx=[60], dy=[17] &middot; R: dx=[124], dy=[13]</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_1/icon.png" alt="Aligned icon.tif result">
+            <figcaption>Icon<br>G: dx=[41], dy=[17] &middot; R: dx=[89], dy=[23]</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_1/ilemselga.png" alt="Aligned ilemselga.tif result">
+            <figcaption>Ilemselga<br>G: dx=[40], dy=[7] &middot; R: dx=[130], dy=[11]</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_1/melons.png" alt="Aligned melons.tif result">
+            <figcaption>Melons<br>G: dx=[82], dy=[11] &middot; R: dx=[178], dy=[13]</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_1/religous_painting.png" alt="Aligned religous_painting.tif result">
+            <figcaption>Religous Painting<br>G: dx=[28], dy=[3] &middot; R: dx=[68], dy=[7]</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_1/self_portrait.png" alt="Aligned self_portrait.tif result">
+            <figcaption>Self Portrait<br>G: dx=[79], dy=[29] &middot; R: dx=[176], dy=[37]</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_1/siren.png" alt="Aligned siren.tif result">
+            <figcaption>Siren<br>G: dx=[49], dy=[-6] &middot; R: dx=[96], dy=[-25]</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_1/three_generations.png" alt="Aligned three_generations.tif result">
+            <figcaption>Three Generations<br>G: dx=[53], dy=[14] &middot; R: dx=[112], dy=[11]</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_1/wharf.png" alt="Aligned wharf.tif result">
+            <figcaption>Wharf<br>G: dx=[15], dy=[-7] &middot; R: dx=[83], dy=[16]</figcaption>
+        </figure>
+    </div>
+
+    <hr>
+
+    <span class="eyebrow">Part 3</span>
+    <h2>My Own Selections</h2>
+    <p>These are three additional glass plates I downloaded from the
+        <a href="https://www.loc.gov/collections/prokudin-gorskii/" target="_blank" rel="noopener">Library of Congress Prokudin-Gorskii collection</a>
+        and ran through the same pipeline.</p>
+    <div class="grid-gallery">
+        <figure>
+            <img src="../images/proj_1/camel.png" alt="[Describe this image]">
+            <figcaption>Camel<br>G: dx=[46], dy=[-3] &middot; R: dx=[98], dy=[-20]</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_1/on_the_island_of_capri.png" alt="[Describe this image]">
+            <figcaption>On the Island of Capri<br>G: dx=[45], dy=[-13] &middot; R: dx=[103], dy=[-11]</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_1/in_a_conservatory.png" alt="[Describe this image]">
+            <figcaption>In a Conservatory<br>G: dx=[60], dy=[28] &middot; R: dx=[126], dy=[35]</figcaption>
+        </figure>
+    </div>
+
+    <hr>
+
+    <span class="eyebrow">Bells &amp; Whistles</span>
+    <h2>Automatic Border Cropping</h2>
+    <p>Rather than crop a fixed margin off every image, I detect the border here
+        automatically per image. After aligning, I measure how much the three channels
+        disagree at each row and column. Real photo
+        content is well aligned and has low disagreement, while the scan border isn't real
+        scene content in any channel, so it shows up as a spike. I can scan in from each edge
+        and crop past the last row/column whose disagreement exceeds a threshold relative
+        to the image's interior, which correctly removes non-contiguous or uneven borders
+        that a fixed-percentage crop would miss.</p>
+    <div class="pair">
+        <figure>
+            <img src="../images/proj_1/bad_crop.png" alt="Result before automatic border cropping">
+            <figcaption>Before</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_1/cathedral.png" alt="Result after automatic border cropping">
+            <figcaption>After</figcaption>
+        </figure>
+    </div>
+
+    <h2>Edge-Based Alignment</h2>
+    <p>The issue that I have when trying to reconstruct the emir image is that when I run into parts of
+        the image that have different pixel brightnesses for each of the filters (e.g. a part of his robe may
+        be very dark in the blue filter but bright in the red filter), the L2/NCC alignment scores don't work well.
+        <br><br>
+        Sobel filters fix this issue. Instead of looking directly at pixel to pixel brightness comparisons,
+        Sobel filters try to detect edges in the image. To detect an edge, they calculate how quickly brightness
+        is changing at each pixel, and if in a row/column the brightness is changing rapidly, then an edge is detected.
+
+        <br><br>To find how fast brightness is changing from pixel to pixel, Sobel filters use a kernel that encodes
+        a pattern that reinforces edges and cancels out flat parts of the image. A convolution is then performed on the
+        entire image to get a final edge magnitude image, which I can then run NCC on to find the shift
+        that best aligns the edges of the images.
+    </p>
+    <div class="pair">
+        <figure>
+            <img src="../images/proj_1/emir-mid.png" alt="Result with raw pixel-value alignment">
+            <figcaption>Raw pixel-value alignment<br>G: dx=[49], dy=[24] &middot; R: dx=[141], dy=[-205]</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_1/emir_good.png" alt="Result with Sobel edge-based alignment">
+            <figcaption>Sobel edge-based alignment<br>G: dx=[49], dy=[24] &middot; R: dx=[104], dy=[56]</figcaption>
+        </figure>
+    </div>
+
+    <a class="back-link" href="../index.html">&larr; Back to portfolio</a>
+
+    <footer>Alex Aney &middot; CS180 &middot; UC Berkeley</footer>
+</body>
+</html>
