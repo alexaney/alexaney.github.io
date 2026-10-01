@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Project 2</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../style.css">
+</head>
+<body class="wide">
+    <h1>Project 2: Fun with Filters and Frequencies</h1>
+    <p class="tagline">Convolutions, edge detection, sharpening, hybrid images, and multiresolution blending</p>
+
+    <nav class="toc">
+        <a href="#p1-1">1.1 Convolutions from Scratch</a> &middot;
+        <a href="#p1-2">1.2 Finite Difference Operator</a> &middot;
+        <a href="#p1-3">1.3 Derivative of Gaussian</a><br>
+        <a href="#p2-1">2.1 Sharpening</a> &middot;
+        <a href="#p2-2">2.2 Hybrid Images</a> &middot;
+        <a href="#p2-3">2.3 Gaussian &amp; Laplacian Stacks</a> &middot;
+        <a href="#p2-4">2.4 Multiresolution Blending</a> &middot;
+        <a href="#reflection">Reflection</a>
+    </nav>
+
+    <!-- ============================================================ -->
+    <!--                     PART 1: FUN WITH FILTERS                  -->
+    <!-- ============================================================ -->
+
+    <hr>
+
+    <span class="eyebrow" id="p1-1">Part 1.1</span>
+    <h2>Convolutions from Scratch</h2>
+    <p>A convolution takes a kernel (a small grid of weights), flips it, and slides it over the image,
+        which you can think of as just a grid of brightness values. For each pixel in the image, I
+        centered the kernel on that pixel and multiplied each kernel number by the image pixel underneath
+        it. I then added all of those products together, and the sum is the new value for that pixel in
+        the output image.<br><br>
+        I implemented the convolution two ways: once with 4 for loops and once with 2 for loops. The
+        4-loop implementation uses 2 loops to visit every image pixel, and then 2 more loops to walk
+        through each kernel entry for that pixel. The 2-loop implementation uses <code>np.sum()</code>
+        instead. I still visited every pixel, but I grabbed the whole patch under the kernel and called
+        <code>np.sum(patch * k)</code> instead of looping over the kernel myself.<br><br>
+        When the kernel is centered on a pixel near the border, part of it hangs off the edge of the
+        image, so I implemented zero padding. The padding adds extra pixels with a value of 0 around the
+        border of the image, so the kernel always has something to multiply. For the output size, "full"
+        mode keeps the larger padded size, and "same" mode crops the output back to the same size as the
+        input.</p>
+
+<pre><code>def zero_pad(img, ph, pw):
+    """Surround img with ph rows of zeros top/bottom and pw cols left/right."""
+    H, W = np.shape(img)
+    padded = np.zeros((H + 2 * ph, W + 2 * pw), dtype=np.float64)
+    padded[ph:ph + H, pw:pw + W] = img
+    return padded
+
+def conv2d_4loops(img, kernel, mode="same"):
+    img = img.astype(np.float64)
+    k = kernel[::-1, ::-1].astype(np.float64)   # flip kernel
+    h, w = np.shape(img)
+    kh, kw = np.shape(k)
+
+    padded = zero_pad(img, kh-1, kw-1)          # zero-fill boundary
+    outH, outW = h + kh - 1, w + kw - 1         # "full" output size
+    out = np.zeros((outH, outW))
+
+    for i in range(outH):
+        for j in range(outW):
+            total = 0.0
+            for u in range(kh):
+                for v in range(kw):
+                    total += padded[i + u, j + v] * k[u, v]
+            out[i, j] = total
+    if mode == "same":                          # crop center back to input size
+        r, c = (kh - 1) // 2, (kw - 1) // 2
+        out = out[r:r + h, c:c + w]
+    return out
+
+def conv2d_2loops(img, kernel, mode="same"):
+    img = img.astype(np.float64)
+    k = kernel[::-1, ::-1].astype(np.float64)   # flip kernel
+    h, w = np.shape(img)
+    kh, kw = np.shape(k)
+
+    padded = zero_pad(img, kh-1, kw-1)          # zero-fill boundary
+    outH, outW = h + kh - 1, w + kw - 1         # "full" output size
+    out = np.zeros((outH, outW))
+
+    for i in range(outH):
+        for j in range(outW):
+            patch = padded[i:i + kh, j:j + kw]
+            out[i, j] = np.sum(patch * k)       # inner two loops → one numpy op
+    if mode == "same":                          # crop center back to input size
+        r, c = (kh - 1) // 2, (kw - 1) // 2
+        out = out[r:r + h, c:c + w]
+    return out</code></pre>
+    <p>The filters I applied to my photo:</p>
+<pre><code>box = np.ones((9, 9)) / 81.0          # 9x9 box: weights sum to 1, so brightness is preserved
+Dx  = np.array([[1, 0, -1]])           # horizontal difference
+Dy  = np.array([[1], [0], [-1]])       # vertical difference</code></pre>
+
+    <h2>Comparison with <code>scipy.signal.convolve2d</code></h2>
+    <p>The outputs of my convolutions and <code>scipy.signal.convolve2d</code> are nearly identical.
+        For the box filter, the max pixel difference is 3.4&nbsp;&times;&nbsp;10<sup>&minus;15</sup>,
+        which is just floating-point rounding. For D<sub>x</sub> and D<sub>y</sub>, the outputs are
+        exactly the same.</p>
+    <table style="margin: 1rem auto; border-collapse: collapse; font-size: 0.9rem;">
+        <tr><th style="padding: 4px 14px;">Filter</th><th style="padding: 4px 14px;">4 loops</th><th style="padding: 4px 14px;">2 loops</th><th style="padding: 4px 14px;">scipy</th></tr>
+        <tr><td>Box 9&times;9</td><td>11.945 s</td><td>2.395 s</td><td>0.048 s</td></tr>
+        <tr><td>D<sub>x</sub></td><td>0.555 s</td><td>2.350 s</td><td>0.004 s</td></tr>
+        <tr><td>D<sub>y</sub></td><td>0.706 s</td><td>2.500 s</td><td>0.016 s</td></tr>
+    </table>
+    <p>The scipy function runs much faster than both of my implementations because its loops run in
+        compiled C code, which is much faster than Python. The 2-loop implementation is faster than the
+        4-loop one for the box filter but slower for D<sub>x</sub> and D<sub>y</sub>, because its speed
+        doesn't depend on the kernel size. In the 2-loop version, one numpy call handles all the kernel
+        calculations for each pixel, and that call takes about the same time no matter how big the kernel
+        is. In the 4-loop version, the number of calculations per pixel depends entirely on the kernel
+        size. For the 9&times;9 box filter, one numpy call is much faster than 81 separate multiplies, but
+        for the 3-entry D<sub>x</sub> and D<sub>y</sub>, the overhead of the numpy call costs more than
+        just doing 3 multiplies.</p>
+    <p>scipy can also handle boundaries in other ways than the zero padding I described above. With
+        <code>boundary="symm"</code>, scipy mirrors the image at each edge, which looks more realistic than
+        filling the border with black 0 values. You can also use <code>boundary="wrap"</code>, which
+        pretends the image repeats. For example, if you go past the right edge, you would see the left
+        edge.</p>
+
+    <h2>Results on a Picture of Me</h2>
+    <div class="image-row">
+        <figure>
+            <img src="../images/proj_2/me_original.png" alt="Original grayscale photo of me playing tennis">
+            <figcaption><strong>Original</strong><br>grayscale input</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_2/me_box9.png" alt="Photo convolved with a 9x9 box filter">
+            <figcaption><strong>Box 9&times;9</strong><br>uniform blur</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_2/me_dx.png" alt="Photo convolved with Dx">
+            <figcaption><strong>D<sub>x</sub></strong><br>vertical edges</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_2/me_dy.png" alt="Photo convolved with Dy">
+            <figcaption><strong>D<sub>y</sub></strong><br>horizontal edges</figcaption>
+        </figure>
+    </div>
+
+    <hr>
+
+    <span class="eyebrow" id="p1-2">Part 1.2</span>
+    <h2>Finite Difference Operator</h2>
+    <p>To find edges in the cameraman image, I first convolved it with D<sub>x</sub> and D<sub>y</sub>.
+        Convolving with D<sub>x</sub> gives the partial derivative &part;I/&part;x, which tells you how
+        much the brightness changes as you move left to right, so it picks up vertical edges like the
+        tripod legs. Convolving with D<sub>y</sub> gives &part;I/&part;y, which tells you how much the
+        brightness changes as you move top to bottom, so it picks up horizontal edges like the
+        horizon. In flat areas like the sky, neighboring pixels are about the same, so both come out
+        close to 0 (mid-gray in the images below).<br><br>
+        Since each derivative only catches edges in one direction, I combined them into the gradient
+        magnitude:</p>
+    <p style="text-align: center;">
+        &#8214;&nabla;I&#8214; = &radic;( (&part;I/&part;x)&sup2; + (&part;I/&part;y)&sup2; )
+    </p>
+    <p>The gradient magnitude measures how strong the edge is at each pixel, no matter which direction
+        the edge runs. Squaring also gets rid of negative signs, so both bright-to-dark and dark-to-bright
+        transitions count.<br><br>
+        Finally, to get a clean edge image, I binarized the gradient magnitude: every pixel above a
+        threshold is marked as an edge (white), and everything else is set to black.</p>
+    <figure class="figure-wide">
+        <img src="../images/proj_2/cameraman_finite_diff.png" alt="Cameraman partial derivatives in x and y, gradient magnitude, and binarized edges at threshold 0.15">
+        <figcaption>Partial derivatives, gradient magnitude, and binarized edges (threshold = 0.15)</figcaption>
+    </figure>
+
+    <h2>Choosing the Threshold</h2>
+    <p>Picking the threshold is a tradeoff between getting rid of noise and keeping the real edges, so
+        I tried values from 0.05 to 0.3. At 0.05 and 0.1, the grass is covered in white speckles,
+        because its texture creates lots of small gradients that make it over the threshold. At 0.25
+        and 0.3, the grass is mostly clean, but the real edges start breaking apart, and parts of the
+        tripod legs and the buildings in the background become dashed or disappear.<br><br>
+        I chose 0.15 because it keeps the outline of the man, the camera, and the tripod connected
+        while removing most of the noise. There is still some speckle left in the grass, because the
+        grass texture and the weaker real edges have similar gradient strengths, so no single threshold
+        can remove one without losing the other.</p>
+    <figure class="figure-wide">
+        <img src="../images/proj_2/cameraman_threshold_sweep.png" alt="Binarized gradient magnitude at thresholds 0.05 through 0.3">
+        <figcaption>Binarized gradient magnitude at thresholds 0.05 to 0.3</figcaption>
+    </figure>
+
+    <hr>
+
+    <span class="eyebrow" id="p1-3">Part 1.3</span>
+    <h2>Derivative of Gaussian (DoG) Filter</h2>
+    <p>The results in Part 1.2 are noisy because D<sub>x</sub> and D<sub>y</sub> react to every small
+        change in brightness, including the texture of the grass. If I blur the image with a Gaussian
+        first, those small changes get smoothed out before I take the derivative, while the big edges
+        are still there.</p>
+
+    <h2>Method 1: Blur, then Differentiate</h2>
+    <p>To make the Gaussian filter, I took a 1D Gaussian from <code>cv2.getGaussianKernel</code> and
+        multiplied it by its transpose (an outer product) to get a 2D Gaussian. I used &sigma; = 2 and a
+        13&times;13 kernel, which is 6&sigma; + 1, so the kernel covers 3&sigma; in each direction. I
+        blurred the cameraman with it, and then repeated the same steps from Part 1.2 on the blurred
+        image.</p>
+    <figure class="figure-wide">
+        <img src="../images/proj_2/cameraman_blur_then_d.png" alt="Blurred cameraman, its gradient magnitude, and binarized edges at threshold 0.06">
+        <figcaption>Blurred image, gradient magnitude, and binarized edges (threshold = 0.06)</figcaption>
+    </figure>
+    <p>Blurring spreads each edge out over more pixels, so the brightness changes more gradually and
+        the gradients come out weaker. Because of that, the threshold from Part 1.2 was too high, so I
+        tried a lower range, from 0.02 to 0.12. I chose 0.06: at 0.02 and 0.04 the grass still shows up
+        as blobs, and at 0.08 and above, parts of the tripod legs and the background buildings start to
+        disappear.</p>
+    <figure class="figure-wide">
+        <img src="../images/proj_2/cameraman_blur_threshold_sweep.png" alt="Binarized gradient magnitude of the blurred image at thresholds 0.02 through 0.12">
+        <figcaption>Binarized gradient magnitude of the blurred image at thresholds 0.02 to 0.12</figcaption>
+    </figure>
+    <p><strong>What differences do you see?</strong> Compared to Part 1.2, the edges are much cleaner.
+        The speckle in the grass is almost completely gone, because the Gaussian averaged out the grass
+        texture before it was differentiated. The edges are also thicker and smoother: instead of thin,
+        jagged lines, the outlines of the man and the tripod are continuous curves. The downside is that
+        some fine detail is lost, like the small parts of the camera and the man's face blending
+        together, and the edges are a little less precisely located.</p>
+
+    <h2>Method 2: A Single DoG Filter</h2>
+    <p>Convolution is associative, which means (I &lowast; G) &lowast; D<sub>x</sub> =
+        I &lowast; (G &lowast; D<sub>x</sub>). So instead of blurring the image and then taking the
+        derivative, I can convolve the Gaussian with D<sub>x</sub> and D<sub>y</sub> once to make two
+        derivative of Gaussian (DoG) filters, and then apply each one to the image with a single
+        convolution.<br><br>
+        In the filters below, gray is 0, white is positive, and black is negative. DoG<sub>x</sub> is a
+        bright blob next to a dark blob, so it responds when the brightness changes from left to right.
+        DoG<sub>y</sub> is the same thing rotated, with the blobs stacked on top of each other, so it
+        responds to changes from top to bottom.</p>
+    <figure class="figure-wide">
+        <img src="../images/proj_2/dog_filters.png" alt="DoG_x, DoG_y, and Gaussian filters">
+        <figcaption>DoG<sub>x</sub>, DoG<sub>y</sub>, and the Gaussian G</figcaption>
+    </figure>
+    <figure class="figure-wide">
+        <img src="../images/proj_2/cameraman_method_compare.png" alt="Binarized edges from Method 1 and Method 2 side by side, visually identical">
+        <figcaption>Binarized edges (threshold = 0.06): Method 1 (blur &rarr; D) vs. Method 2 (DoG)</figcaption>
+    </figure>
+    <p><strong>Verification:</strong> The two methods give the same result. I compared &part;I/&part;x
+        and &part;I/&part;y from both methods with <code>np.allclose</code>, and both returned True. The
+        largest difference in gradient magnitude was 1.7&nbsp;&times;&nbsp;10<sup>&minus;15</sup>, which
+        is just floating-point rounding. I left out a 13-pixel border when comparing, because the two
+        methods pad the edges of the image slightly differently.</p>
+
+    <!-- ============================================================ -->
+    <!--                  PART 2: FUN WITH FREQUENCIES                 -->
+    <!-- ============================================================ -->
+
+    <hr>
+
+    <span class="eyebrow" id="p2-1">Part 2.1</span>
+    <h2>Image "Sharpening"</h2>
+    <p>A Gaussian filter is a low-pass filter: blurring an image keeps the low frequencies (smooth areas
+        and overall shapes) and removes the high frequencies (edges and fine texture). That means if I
+        subtract the blurred image from the original, only the high frequencies are left:</p>
+    <p style="text-align: center;">
+        <code>high = image &minus; image &lowast; G</code>
+    </p>
+    <p>Adding a scaled copy of the high frequencies back to the original exaggerates the edges and
+        detail, which makes the image look sharper. &alpha; controls how much gets added back:</p>
+    <p style="text-align: center;">
+        <code>sharpened = image + &alpha; &middot; high</code>
+    </p>
+    <p>Since every step is just a convolution, addition, or scaling, the whole thing can be combined into
+        one filter, called the unsharp mask filter. Here &delta; is the unit impulse, a kernel that is 1
+        in the center and 0 everywhere else, so convolving with it leaves the image unchanged:</p>
+    <p style="text-align: center;">
+        <code>sharpened = image &lowast; ((1 + &alpha;)&delta; &minus; &alpha;G)</code>
+    </p>
+    <p>I used a Gaussian with &sigma; = 1 (a 7&times;7 kernel) and filtered each color channel separately.
+        To check that the single filter really does the same thing as the step-by-step version, I compared
+        the two with <code>np.allclose</code>, which returned True, with a max difference of about
+        1.8&nbsp;&times;&nbsp;10<sup>&minus;15</sup>.</p>
+
+    <h2>Taj Mahal</h2>
+    <p>The high-frequency image is almost entirely flat gray (zero), with detail only along the edges:
+        the carvings on the walls, the outlines of the domes, the scaffolding, and the trees. After adding
+        it back with &alpha; = 2, all of that detail looks noticeably crisper in the sharpened image.</p>
+    <figure class="figure-wide">
+        <img src="../images/proj_2/taj_sharpen.png" alt="Taj Mahal: original, blurred with sigma 1, high frequencies, and sharpened with alpha 2">
+        <figcaption>Original, blurred (&sigma; = 1), high frequencies, and sharpened (&alpha; = 2)</figcaption>
+    </figure>
+
+    <h2>Varying the Sharpening Amount</h2>
+    <p>At &alpha; = 0.5 and 1, the change is subtle and mostly shows up in the carvings and the edges of
+        the domes. At &alpha; = 2, the image is clearly sharper but still looks natural. At &alpha; = 5,
+        it is over-sharpened: the marble looks grainy, the sky picks up noise, and bright halos show up
+        around high-contrast edges like the trees. Sharpening can only amplify what is already in the
+        image, so with a large &alpha; it also amplifies noise and compression artifacts, not just the
+        real detail.</p>
+    <figure class="figure-wide">
+        <img src="../images/proj_2/taj_alpha_sweep.png" alt="Taj Mahal sharpened with alpha 0.5, 1, 2, and 5">
+        <figcaption>Original and sharpened with &alpha; = 0.5, 1, 2, 5</figcaption>
+    </figure>
+
+    <h2>My Own Image: The Campanile</h2>
+    <p>I also sharpened a photo I took of the Campanile at sunset, with the same &sigma; = 1 and
+        &alpha; = 2. Most of this photo is smooth sky, so the high-frequency image is almost completely
+        flat. The only strong high frequencies are the outline of the tower, its windows and clock, and
+        the leaves along the edges of the trees, and those are exactly the parts that get crisper in the
+        sharpened version.</p>
+    <figure class="figure-wide">
+        <img src="../images/proj_2/campanile_sharpen.png" alt="Campanile: original, blurred with sigma 1, high frequencies, and sharpened with alpha 2">
+        <figcaption>Original, blurred (&sigma; = 1), high frequencies, and sharpened (&alpha; = 2)</figcaption>
+    </figure>
+
+    <h2>Blur, then Re-sharpen</h2>
+    <p>To see how much detail sharpening can actually recover, I took the sharp Taj Mahal image, blurred
+        it on purpose, and then ran the blurred version through the unsharp mask filter with
+        &alpha; = 2.</p>
+    <figure class="figure-wide">
+        <img src="../images/proj_2/taj_resharpen.png" alt="Taj Mahal: original sharp image, blurred version, and re-sharpened version">
+        <figcaption>Original (sharp), blurred, and re-sharpened</figcaption>
+    </figure>
+    <p>The re-sharpened image looks better than the blurred one, and the outlines of the domes, arches,
+        and trees are more defined. But it still doesn't match the original. The fine details, like the
+        scaffolding on the left side, the carvings around the main arch, and the people on the walkway,
+        are still missing. Blurring removed those high frequencies completely, and sharpening can only
+        boost high frequencies that are still in the image, so it can't bring back information that is
+        gone. It makes edges more contrasty so the image looks sharper, but it doesn't add back real
+        detail.</p>
+
+    <hr>
+
+    <span class="eyebrow" id="p2-2">Part 2.2</span>
+    <h2>Hybrid Images</h2>
+    <p>A hybrid image looks like one thing up close and another thing from far away. This works because
+        of how we see frequencies: up close, the high frequencies (sharp edges and fine detail) are what
+        we notice most, but from far away those details are too small to see, so only the low frequencies
+        (overall shapes, shading, and color) are left.<br><br>
+        To make one, I take the high frequencies of the first image and the low frequencies of the second
+        image and add them together:</p>
+    <p style="text-align: center;">
+        <code>hybrid = (im1 &minus; im1 &lowast; G<sub>&sigma;1</sub>) + im2 &lowast; G<sub>&sigma;2</sub></code>
+    </p>
+    <p>The low-pass filter is a Gaussian blur with &sigma;<sub>2</sub>, and the high-pass filter is the
+        image minus its own Gaussian blur with &sigma;<sub>1</sub>, the same idea as in Part 2.1. Before
+        filtering, I aligned the two images with the provided <code>align_images</code> code, by picking
+        two matching points in each image (like the eyes). It shifts, scales, and rotates the first image
+        so those points line up with the second.</p>
+
+    <h2>Full Process: Derek + Nutmeg</h2>
+    <div class="image-row inputs">
+        <figure>
+            <img src="../images/proj_2/derek.jpg" alt="Derek">
+            <figcaption><strong>Derek</strong><br>high frequencies</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_2/nutmeg.jpg" alt="Nutmeg the cat">
+            <figcaption><strong>Nutmeg</strong><br>low frequencies</figcaption>
+        </figure>
+    </div>
+    <p>The top row below shows the aligned inputs, the high-passed Derek, the low-passed Nutmeg, and the
+        final hybrid. The bottom row shows the log magnitude of the Fourier transform of each image. In a
+        Fourier transform, the center is the lowest frequencies, and the farther out you go from the
+        center, the higher the frequency.</p>
+    <figure class="figure-wide">
+        <img src="../images/proj_2/derek_nutmeg_process.png" alt="Aligned inputs, high-passed Derek, low-passed Nutmeg, and hybrid, with the log magnitude FFT of each below">
+        <figcaption>Top: aligned inputs, high-passed Derek, low-passed Nutmeg, and hybrid.
+            Bottom: log magnitude Fourier transform of each.</figcaption>
+    </figure>
+    <p>The Fourier transforms show what each filter is doing. The low-passed Nutmeg's transform is dark
+        everywhere except a small bright area in the center, because the Gaussian removed everything but
+        the lowest frequencies. The high-passed Derek's transform is the opposite: it is spread out over
+        the whole image, and the very center is darker. The hybrid's transform looks like the two
+        combined, with the low frequencies coming from Nutmeg and the rest coming from Derek. The straight
+        diagonal lines in several of the transforms come from the sharp edges of the black borders that
+        the alignment added when it rotated the images, not from the photos themselves.</p>
+    <p><strong>Choosing the cutoffs:</strong> I used &sigma;<sub>1</sub> = 3 for Derek's high-pass
+        and &sigma;<sub>2</sub> = 8 for Nutmeg's low-pass. If &sigma;<sub>2</sub> is too small,
+        Nutmeg's fur and whiskers stay sharp and compete with Derek up close, and if it is too large,
+        Nutmeg turns into a blur that is hard to recognize even from far away. If &sigma;<sub>1</sub> is
+        too small, only Derek's thinnest edges are left and he is hard to see up close, and if it is too
+        large, too much of his shading comes through and he is still visible from far away.</p>
+
+    <h2>Dog + Shark</h2>
+    <div class="image-row inputs">
+        <figure>
+            <img src="../images/proj_2/dog.jpg" alt="Golden retriever">
+            <figcaption><strong>Dog</strong><br>high frequencies</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_2/shark.jpg" alt="Great white shark facing the camera">
+            <figcaption><strong>Shark</strong><br>low frequencies</figcaption>
+        </figure>
+    </div>
+    <div class="pair">
+        <figure style="width: 480px;">
+            <img src="../images/proj_2/dog_shark_hybrid.png" alt="Hybrid of the dog and the shark: a smiling golden retriever up close, a blue shark from far away">
+            <figcaption>Hybrid (&sigma;<sub>1</sub> = 4, &sigma;<sub>2</sub> = 8)</figcaption>
+        </figure>
+    </div>
+    <p>Up close, this looks like a smiling golden retriever. From far away, the dog's fur and eyes fade
+        out, and you mostly see the shark: its blue body, its fins, and the light patch around its
+        mouth.<br><br>
+        A few choices made this work. First, instead of lining up the eyes, I lined up the point between
+        the eyes and the mouth. The shark's eyes are much farther apart than the dog's, so lining up the
+        eyes would have made the dog twice as big and put its nose on the shark's mouth. This way, the
+        dog's smile sits right on the shark's grin. Second, I cropped off the black borders that the
+        alignment adds. Third, I only used the grayscale high frequencies of the dog, so all of the color
+        comes from the shark. Before, the dog's brown and green mixed with the shark's blue and looked
+        muddy. Finally, I tested a few cutoffs and chose &sigma;<sub>1</sub> = 4 and
+        &sigma;<sub>2</sub> = 8: a smaller &sigma;<sub>2</sub> left the shark's teeth visible up close,
+        and a larger one made the shark too blurry to recognize from far away.</p>
+
+    <h2>Me + LeBron (Failure)</h2>
+    <div class="image-row inputs">
+        <figure>
+            <img src="../images/proj_2/me_boat.jpg" alt="Me rowing a boat">
+            <figcaption><strong>Me</strong><br>high frequencies (&sigma;<sub>1</sub> = 3)</figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_2/lebron.jpg" alt="LeBron James dribbling a basketball">
+            <figcaption><strong>LeBron</strong><br>low frequencies (&sigma;<sub>2</sub> = 8)</figcaption>
+        </figure>
+    </div>
+    <div class="pair">
+        <figure>
+            <img src="../images/proj_2/me_lebron_hybrid.png" alt="Hybrid of me and LeBron James">
+            <figcaption>Hybrid (&sigma;<sub>1</sub> = 3, &sigma;<sub>2</sub> = 8)</figcaption>
+        </figure>
+    </div>
+    <p>This one didn't work well. At any distance, you mostly see me in the boat, and LeBron only shows
+        up as a bright glow on my shirt. There are a few reasons for this:</p>
+    <ul style="text-align: left;">
+        <li>I'm sitting and he's standing and dribbling, so even with our faces lined up, our bodies are
+            in completely different places.</li>
+        <li>Hybrids depend a lot on facial features, but both photos are full-body shots, so the faces are
+            a very small part of each image and don't end up meshing well.</li>
+        <li>Not much of LeBron is left after the low-pass. His photo is mostly a dark arena with a bright
+            white jersey, so after blurring, all that's left is darkness and a white glow.</li>
+        <li>The trees, water, and boat in my photo add lots of high frequencies across the whole image,
+            which cover up what's left of LeBron.</li>
+        <li>My image is landscape and his is portrait, so after aligning and cropping them to the same
+            size, only a narrow strip was left.</li>
+    </ul>
+
+    <hr>
+
+    <span class="eyebrow" id="p2-3">Part 2.3</span>
+    <h2>Gaussian and Laplacian Stacks</h2>
+    <p>A stack is like an image pyramid, except the image is never downsampled, so every level is the
+        same size as the original. That makes it easy to line the levels up and combine them pixel by
+        pixel, which is what the blending in Part 2.4 needs.<br><br>
+        <strong>Gaussian stack:</strong> level 0 is the original image, and each next level is the
+        previous level blurred again with a Gaussian. I used 6 levels, starting at &sigma; = 2 and
+        doubling &sigma; at each level (2, 4, 8, 16, 32). As you go down the stack, the fine texture
+        disappears first, then the edges, until only the overall color and shape of the fruit is
+        left.<br><br>
+        <strong>Laplacian stack:</strong> each level is the difference between two Gaussian levels next to
+        each other, <code>L<sub>i</sub> = G<sub>i</sub> &minus; G<sub>i+1</sub></code>, so it only holds
+        the details that were removed by that one blur. The last level (level 5) is just the last,
+        blurriest Gaussian level. I used 6 levels instead of 5 so that levels 0 through 4 are all
+        difference levels, which is what Szeliski's Figure 3.42 shows. With only 5 levels, level 4 would
+        be the leftover blurry Gaussian instead. Because each difference cancels out with the next one,
+        adding all the Laplacian levels together gives back the original image exactly. I checked this with
+        <code>np.allclose</code>, which returned True for both the apple and the orange. The Laplacian
+        levels have negative values, so they are rescaled to display them, and mid-gray means 0.</p>
+
+    <h2>Apple</h2>
+    <figure class="figure-wide">
+        <img src="../images/proj_2/apple_gaussian_stack.png" alt="Apple Gaussian stack, levels 0 through 5">
+        <figcaption>Gaussian stack, levels 0&ndash;5</figcaption>
+    </figure>
+    <figure class="figure-wide">
+        <img src="../images/proj_2/apple_laplacian_stack.png" alt="Apple Laplacian stack, levels 0 through 5">
+        <figcaption>Laplacian stack, levels 0&ndash;5</figcaption>
+    </figure>
+
+    <h2>Orange</h2>
+    <figure class="figure-wide">
+        <img src="../images/proj_2/orange_gaussian_stack.png" alt="Orange Gaussian stack, levels 0 through 5">
+        <figcaption>Gaussian stack, levels 0&ndash;5</figcaption>
+    </figure>
+    <figure class="figure-wide">
+        <img src="../images/proj_2/orange_laplacian_stack.png" alt="Orange Laplacian stack, levels 0 through 5">
+        <figcaption>Laplacian stack, levels 0&ndash;5</figcaption>
+    </figure>
+    <p>The Laplacian stacks split each image into bands of detail. Level 0 has the finest detail, like
+        the dimpled texture of the orange peel and the grain of the background cloth. The middle levels
+        have the edges and bigger features, like the outline of each fruit, the highlights on the apple,
+        and the pencil. Level 4 only has very large, soft changes in color and brightness, like the
+        overall shading of each fruit. The last level (level 5) is just a blurry blob of color.</p>
+
+    <h2>Recreating Figure 3.42</h2>
+    <p>To recreate Figure 3.42 from Szeliski, I applied a half-and-half mask to each level of the two
+        Laplacian stacks, keeping the left half of the apple and the right half of the orange. The mask is
+        also blurred with its own Gaussian stack, so its edge is sharp at level 0 and gets softer at each
+        level. The rows show Laplacian levels 0, 2, and 4, and the bottom row shows all the levels added
+        together. The columns are the masked apple, the masked orange, and the two added together.<br><br>
+        At level 0 (fine detail), the seam is narrow, so the orange peel texture stops right at the middle.
+        At level 4 (large, soft changes in color and shading), the seam is very wide, so the two halves
+        fade into each other gradually. Adding all the levels together, including the leftover level 5,
+        gives the final Oraple, where the seam is barely visible.</p>
+    <div class="pair">
+        <figure style="width: 600px;">
+            <img src="../images/proj_2/fig_3_42.png" alt="Recreation of Szeliski Figure 3.42: masked apple, masked orange, and blended Laplacian levels 0, 2, and 4, plus the summed results">
+            <figcaption>Figure 3.42 (a)&ndash;(l) recreation</figcaption>
+        </figure>
+    </div>
+
+    <hr>
+
+    <span class="eyebrow" id="p2-4">Part 2.4</span>
+    <h2>Multiresolution Blending</h2>
+    <p>If you just paste the left half of one image next to the right half of another, there is an
+        obvious seam. Blurring the seam doesn't completely fix it either: a small blur still leaves a
+        sudden jump in color, and a big blur makes the fine details of both images overlap and look
+        ghosty. Multiresolution blending fixes this by blending each band of detail with a seam of a
+        matching width:</p>
+    <ol style="text-align: left;">
+        <li>Build Laplacian stacks of both images.</li>
+        <li>Build a Gaussian stack of the mask, where the mask is 1 where image A should show and 0 where
+            image B should show.</li>
+        <li>At each level, combine the two images using that level of the mask:
+            <code>L<sub>i</sub> = G<sub>M,i</sub> &middot; L<sub>A,i</sub> + (1 &minus; G<sub>M,i</sub>) &middot; L<sub>B,i</sub></code>.</li>
+        <li>Add all the blended levels together to get the final image.</li>
+    </ol>
+    <p>This way, the fine details are blended across a narrow, sharp seam, and the overall colors are
+        blended across a wide, soft one, so you don't see a hard edge or ghosting. For the blends below,
+        I used 5 levels, starting at &sigma; = 2.</p>
+
+    <h2>The Oraple (Vertical Seam)</h2>
+    <div class="image-row">
+        <figure>
+            <img src="../images/proj_2/apple.jpeg" alt="Apple">
+            <figcaption><strong>Apple</strong></figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_2/orange.jpeg" alt="Orange">
+            <figcaption><strong>Orange</strong></figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_2/orapple.png" alt="Blended Oraple: left half apple, right half orange">
+            <figcaption><strong>Oraple</strong></figcaption>
+        </figure>
+    </div>
+
+    <h2>Tennis Ball + Pickleball (Irregular Mask)</h2>
+    <p>For the irregular mask, I put the felt of a tennis ball inside the shell of a pickleball. First, I
+        aligned the two photos by cropping and scaling each one to 400&times;400, so both balls are the
+        same size (300 pixels across) and centered in the same spot. Then I painted the mask by hand in
+        Photopea, tracing a rough curve around the middle of the tennis ball. White is where the tennis
+        ball shows and black is where the pickleball shows, so the result is a tennis ball center with the
+        pickleball's holes showing around the edges.</p>
+    <figure class="figure-wide">
+        <img src="../images/proj_2/tennis_pickleball_result.png" alt="Tennis ball, pickleball, hand-painted mask, naive paste, and multiresolution blend side by side">
+        <figcaption>Tennis ball (A), pickleball (B), mask, naive cut-and-paste, and multiresolution blend</figcaption>
+    </figure>
+    <p>In the naive cut-and-paste, the tennis ball looks like a sticker with a jagged outline. In the
+        multiresolution blend, the felt texture still stops close to the edge of the mask, but the color
+        and shading fade gradually into the plastic, so the felt looks like part of the ball. It also
+        helps that both balls are similar shades of yellow-green, so their colors blend together
+        easily.</p>
+    <div class="pair">
+        <figure>
+            <img src="../images/proj_2/tennis_pickleball.png" alt="Final blend: tennis ball felt inside a pickleball">
+            <figcaption>Final blend</figcaption>
+        </figure>
+    </div>
+
+    <h2>Mountains + Beach (Horizontal Seam)</h2>
+    <p>For my creative blend, I put a mountain range on top of a sunset beach with a horizontal mask: the
+        top half comes from the mountain photo and the bottom half comes from the beach photo. Both photos
+        are the same size, and the beach's horizon is almost exactly halfway down, so the seam lands right
+        on the horizon, where a change in the scene looks natural.</p>
+    <figure class="figure-wide">
+        <img src="../images/proj_2/mountain_beach_result.png" alt="Mountains, beach, horizontal mask, naive paste, and multiresolution blend side by side">
+        <figcaption>Mountains (A), beach (B), mask (white top half, black bottom half), naive cut-and-paste, and multiresolution blend</figcaption>
+    </figure>
+    <p>In the naive cut-and-paste, there is a hard line where the trees suddenly stop and the water starts. In
+        the multiresolution blend, the bottom of the forest fades into the horizon, so it looks like the
+        mountains are rising up from behind the ocean.</p>
+    <div class="pair">
+        <figure style="width: 560px;">
+            <img src="../images/proj_2/mountain_beach.png" alt="Final blend: snowy mountains rising behind a sunset beach">
+            <figcaption>Final blend</figcaption>
+        </figure>
+    </div>
+
+    <h2>Inside My Favorite Blend</h2>
+    <p>My favorite blend is the mountains and the beach. It mixes two of my favorite environments into
+        one scene, and I think it turned out really beautiful. The warm sunset light on the snowy peaks
+        matches the orange glow on the water, so the two photos look like they belong together. It is
+        also really satisfying to look at, because there is no obvious place where one photo ends and the
+        other begins. It just looks like a mountain range rising up behind the ocean.<br><br>
+        The figure below shows how it was built. Each row is one Laplacian level, and the columns are the
+        masked mountains, the masked beach, and the two added together. The bottom row is all the levels
+        added up. At level 0, the mask is still sharp, so the fine details, like the rocky texture of the
+        mountains and the foam on the waves, stop right at the horizon. As the levels go up, the mask
+        gets blurrier, so the bigger features blend across a wider area. By level 4, the warm colors of
+        the mountain sky and the sunset over the water fade smoothly into each other. Adding all the
+        levels together gives the final blend, where every detail is sharp but the seam is hidden.</p>
+    <div class="pair">
+        <figure style="width: 600px;">
+            <img src="../images/proj_2/favorite_laplacian_levels.png" alt="Masked mountains, masked beach, and blended Laplacian levels 0 through 4, plus the summed results">
+            <figcaption>Masked inputs and blended result at each Laplacian level</figcaption>
+        </figure>
+    </div>
+
+    <hr>
+
+    <span class="eyebrow" id="reflection">Reflection</span>
+    <h2>The Most Important Thing I Learned</h2>
+    <p>The most important thing I learned from this project is how to think about images in the
+        frequency domain. Before this, I thought of an image as just a grid of pixels, but now I see it as
+        a combination of low and high frequencies. The low frequencies are the smooth, slowly changing
+        parts of an image, like the overall shapes, shading, and color, and the high frequencies are the
+        parts that change quickly, like edges, fine texture, and noise. Almost everything in this project
+        came down to separating those two: blurring keeps the low frequencies, subtracting the blur leaves
+        the high frequencies, sharpening boosts the high frequencies, and blending mixes each band of
+        frequencies separately.<br><br>
+        The hybrid images were where this clicked the most. Using the FFT to look at the log magnitude
+        spectrum of each image, I could actually see what each filter was doing. The low-passed image only
+        had energy near the center, the high-passed image had the center removed, and the hybrid combined
+        the two. I had already learned the theory behind Fourier transforms and the FFT algorithm in
+        previous classes, so it was really fun to finally see those ideas applied to real images and get
+        results I could look at, instead of just working through the math.</p>
+
+    <a class="back-link" href="../index.html">&larr; Back to portfolio</a>
+
+    <footer>Alex Aney &middot; CS180 &middot; UC Berkeley</footer>
+</body>
+</html>
