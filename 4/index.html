@@ -290,7 +290,7 @@
         <figcaption>Campanile, prompt: "a photograph of a yellow school pencil"</figcaption>
     </figure>
     <figure class="figure-wide">
-        <img src="../images/proj_3/text_edit_my_image_1.png" alt="My first image edited toward a city skyline">
+        <img src="../images/proj_3/text_edit_my_image_1.png" alt="My first image edited toward two kids sitting down">
         <figcaption>My image 1, prompt: "picture of two kids sitting down"</figcaption>
     </figure>
     <figure class="figure-wide">
@@ -398,7 +398,7 @@
     <p>In Part B I built and trained my own UNet on MNIST. The UNet goes down to a 7&times;7 and then
         a 1&times;1 feature map with DownConv blocks and average pooling, then back up to 28&times;28 with
         UpConv blocks, with skip connections that concatenate the matching layers from the way down.
-        Each block is a Conv2d, BatchNorm, and GELU.</p>
+        Each block is a convolution (or transposed convolution on the way up), BatchNorm, and GELU.</p>
 
     <hr>
 
