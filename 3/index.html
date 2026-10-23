@@ -611,7 +611,7 @@ Dy  = np.array([[1], [0], [-1]])       # vertical difference</code></pre>
         parts that change quickly, like edges, fine texture, and noise. Almost everything in this project
         came down to separating those two: blurring keeps the low frequencies, subtracting the blur leaves
         the high frequencies, sharpening boosts the high frequencies, and blending mixes each band of
-        frequencies separately.<br><br>
+        frequencies separately.<br><br>2
         The hybrid images were where this clicked the most. Using the FFT to look at the log magnitude
         spectrum of each image, I could actually see what each filter was doing. The low-passed image only
         had energy near the center, the high-passed image had the center removed, and the hybrid combined
