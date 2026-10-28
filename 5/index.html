@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Project 4</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../style.css">
+</head>
+<body class="wide">
+    <h1>Project 4: Image Warping and Mosaicing</h1>
+    <p class="tagline">Part A</p>
+
+    <nav class="toc">
+        <a href="#a1">A.1</a> &middot;
+        <a href="#a2">A.2</a> &middot;
+        <a href="#a3">A.3</a> &middot;
+        <a href="#a4">A.4</a>
+    </nav>
+
+    <hr>
+
+    <span class="eyebrow" id="a1">Part A.1</span>
+    <h2>Shooting the Pictures</h2>
+    <p>Two sets of photos, each taken from one spot by rotating the camera between shots.</p>
+
+    <h2>Set 1: Courtyard</h2>
+    <div class="image-row" style="grid-template-columns: repeat(5, 1fr);">
+        <figure>
+            <img src="../images/proj_4/source_1.jpg" alt="Photo 1">
+            <figcaption><strong>1</strong></figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_4/source_2.jpg" alt="Photo 2">
+            <figcaption><strong>2</strong></figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_4/source_3.jpg" alt="Photo 3">
+            <figcaption><strong>3</strong></figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_4/source_4.jpg" alt="Photo 4">
+            <figcaption><strong>4</strong></figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_4/source_5.jpg" alt="Photo 5">
+            <figcaption><strong>5</strong></figcaption>
+        </figure>
+    </div>
+
+    <h2>Set 2: Apartment</h2>
+    <div class="image-row inputs" style="grid-template-columns: repeat(3, 1fr);">
+        <figure>
+            <img src="../images/proj_4/source_6.jpg" alt="Photo 6">
+            <figcaption><strong>6</strong></figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_4/source_7.jpg" alt="Photo 7">
+            <figcaption><strong>7</strong></figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_4/source_8.jpg" alt="Photo 8">
+            <figcaption><strong>8</strong></figcaption>
+        </figure>
+    </div>
+
+    <hr>
+
+    <span class="eyebrow" id="a2">Part A.2</span>
+    <h2>Recovering Homographies</h2>
+    <p>H maps p to p' = Hp, with the bottom-right entry fixed to 1, leaving 8 unknowns. Each correspondence
+        (x, y) &rarr; (x', y') gives two linear equations:</p>
+<pre><code>[ x  y  1  0  0  0  -x&middot;x'  -y&middot;x' ] &middot; h = x'
+[ 0  0  0  x  y  1  -x&middot;y'  -y&middot;y' ] &middot; h = y'
+
+where h = [a b c d e f g h]&#7488;</code></pre>
+    <p>Stacking these for all n correspondences gives a 2n&times;8 system Ah = b, which I solve with least
+        squares since n &gt; 4.</p>
+    <div class="image-row" style="grid-template-columns: repeat(2, 1fr);">
+        <figure>
+            <img src="../images/proj_4/corr_1_2.jpg" alt="Correspondences between photos 1 and 2">
+            <figcaption><strong>1 &harr; 2</strong></figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_4/corr_2_3.jpg" alt="Correspondences between photos 2 and 3">
+            <figcaption><strong>2 &harr; 3</strong></figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_4/corr_3_4.jpg" alt="Correspondences between photos 3 and 4">
+            <figcaption><strong>3 &harr; 4</strong></figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_4/corr_4_5.jpg" alt="Correspondences between photos 4 and 5">
+            <figcaption><strong>4 &harr; 5</strong></figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_4/corr_6_7.jpg" alt="Correspondences between photos 6 and 7">
+            <figcaption><strong>6 &harr; 7</strong></figcaption>
+        </figure>
+        <figure>
+            <img src="../images/proj_4/corr_7_8.jpg" alt="Correspondences between photos 7 and 8">
+            <figcaption><strong>7 &harr; 8</strong></figcaption>
+        </figure>
+    </div>
+    <p>Recovered homography from photo 1 to photo 2 (16 correspondences, with the photos scaled to
+        756&times;1008):</p>
+<pre><code>[  0.7426   0.0368  188.2371 ]
+[ -0.2057   0.8806   52.0788 ]
+[ -0.0003  -0.0000    1.0000 ]</code></pre>
+
+    <hr>
+
+    <span class="eyebrow" id="a3">Part A.3</span>
+    <h2>Warping the Images</h2>
+    <p>Both warps use inverse warping: the image corners are mapped through H to get the output bounding
+        box, then each output pixel is mapped back through H<sup>&minus;1</sup> to find its source location.
+        Pixels whose source falls outside the image get alpha = 0. Nearest neighbor rounds the source
+        location to the closest pixel; bilinear takes a weighted average of the four surrounding pixels.</p>
+    <p>To rectify, I clicked the four corners of a real-world rectangle and computed the homography that
+        maps them to an axis-aligned rectangle.</p>
+    <figure class="figure-wide">
+        <img src="../images/proj_4/rect_berkeley_sign.jpg" alt="Rectified poster on the recycling bin, nearest neighbor vs bilinear">
+        <figcaption>Poster on the recycling bin (photo 1)</figcaption>
+    </figure>
+    <figure class="figure-wide">
+        <img src="../images/proj_4/rect_makerspace_window.jpg" alt="Rectified Maker Space poster on the door, nearest neighbor vs bilinear">
+        <figcaption>Maker Space poster on the door (photo 5)</figcaption>
+    </figure>
+    <p>Nearest neighbor gives jagged, blocky edges (see the zoomed crops), while bilinear is smoother.
+        Bilinear is slower: about 0.04 s vs. 0.01 s here. I used bilinear for the mosaics.</p>
+
+    <hr>
+
+    <span class="eyebrow" id="a4">Part A.4</span>
+    <h2>Blending into a Mosaic</h2>
+    <p>I computed a homography between each pair of neighboring photos and multiplied them together to map
+        every photo into the frame of the middle photo, which stays unwarped. All photos are warped with
+        bilinear interpolation onto one canvas that covers all of their warped corners.</p>
+    <p>To blend, each photo gets a weight at every pixel equal to that pixel's distance to the photo's edge
+        (a distance transform of its alpha mask), so weights fall to 0 at the edges. I then use a two-band
+        blend: each photo is split into low frequencies (a Gaussian blur) and high frequencies (the photo
+        minus the blur). The low frequencies are combined as a weighted average, which hides seams and
+        exposure differences. The high frequencies are taken from the photo with the largest weight at each
+        pixel, which keeps edges sharp instead of averaging two slightly misaligned copies.</p>
+    <div class="pair">
+        <figure style="width: 640px;">
+            <img src="../images/proj_4/mosaic_apartment_compare.jpg" alt="Overwrite, feathering, and two-band blending">
+            <figcaption>Overwriting leaves visible seams; feathering and two-band blending remove them</figcaption>
+        </figure>
+    </div>
+
+    <h2>Mosaic 1: Photos 1&ndash;3</h2>
+    <figure class="figure-wide">
+        <img src="../images/proj_4/mosaic_bins_sources.jpg" alt="Source photos 1, 2, and 3">
+        <figcaption>Sources</figcaption>
+    </figure>
+    <figure class="figure-wide">
+        <img src="../images/proj_4/mosaic_bins.jpg" alt="Mosaic of photos 1 to 3">
+        <figcaption>Mosaic</figcaption>
+    </figure>
+
+    <h2>Mosaic 2: Photos 3&ndash;5</h2>
+    <figure class="figure-wide">
+        <img src="../images/proj_4/mosaic_entrance_sources.jpg" alt="Source photos 3, 4, and 5">
+        <figcaption>Sources</figcaption>
+    </figure>
+    <figure class="figure-wide">
+        <img src="../images/proj_4/mosaic_entrance.jpg" alt="Mosaic of photos 3 to 5">
+        <figcaption>Mosaic</figcaption>
+    </figure>
+
+    <h2>Mosaic 3: Photos 6&ndash;8</h2>
+    <figure class="figure-wide">
+        <img src="../images/proj_4/mosaic_apartment_sources.jpg" alt="Source photos 6, 7, and 8">
+        <figcaption>Sources</figcaption>
+    </figure>
+    <figure class="figure-wide">
+        <img src="../images/proj_4/mosaic_apartment.jpg" alt="Mosaic of photos 6 to 8">
+        <figcaption>Mosaic</figcaption>
+    </figure>
+
+    <a class="back-link" href="../index.html">&larr; Back to portfolio</a>
+
+    <footer>Alex Aney &middot; CS180 &middot; UC Berkeley</footer>
+</body>
+</html>
